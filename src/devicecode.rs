@@ -8,11 +8,11 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    DeviceCode, EndUserVerificationUrl, ErrorResponse, ErrorResponseType, RequestTokenError,
-    StandardErrorResponse, TokenResponse, TokenType, UserCode,
+    ErrorResponse, ErrorResponseType, RequestTokenError, StandardErrorResponse, TokenResponse,
+    TokenType,
 };
 use crate::basic::BasicErrorResponseType;
-use crate::types::VerificationUriComplete;
+use crate::types::{DeviceCode, EndUserVerificationUrl, UserCode, VerificationUriComplete};
 
 /// The minimum amount of time in seconds that the client SHOULD wait
 /// between polling requests to the token endpoint.  If no value is
@@ -42,10 +42,10 @@ where
     EF: ExtraDeviceAuthorizationFields,
 {
     /// The device verification code.
-    device_code: DeviceCode,
+    pub device_code: DeviceCode,
 
     /// The end-user verification code.
-    user_code: UserCode,
+    pub user_code: UserCode,
 
     /// The end-user verification URI on the authorization The URI should be
     /// short and easy to remember as end users will be asked to manually type
@@ -54,13 +54,13 @@ where
     /// The `verification_url` alias here is a deviation from the RFC, as
     /// implementations of device code flow predate RFC 8628.
     #[serde(alias = "verification_url")]
-    verification_uri: EndUserVerificationUrl,
+    pub verification_uri: EndUserVerificationUrl,
 
     /// A verification URI that includes the "user_code" (or other information
     /// with the same function as the "user_code"), which is designed for
     /// non-textual transmission.
     #[serde(skip_serializing_if = "Option::is_none")]
-    verification_uri_complete: Option<VerificationUriComplete>,
+    pub verification_uri_complete: Option<VerificationUriComplete>,
 
     /// The lifetime in seconds of the "device_code" and "user_code".
     expires_in: u64,
@@ -72,37 +72,13 @@ where
     interval: u64,
 
     #[serde(bound = "EF: ExtraDeviceAuthorizationFields", flatten)]
-    extra_fields: EF,
+    pub extra_fields: EF,
 }
 
 impl<EF> DeviceAuthorizationResponse<EF>
 where
     EF: ExtraDeviceAuthorizationFields,
 {
-    /// The device verification code.
-    pub fn device_code(&self) -> &DeviceCode {
-        &self.device_code
-    }
-
-    /// The end-user verification code.
-    pub fn user_code(&self) -> &UserCode {
-        &self.user_code
-    }
-
-    /// The end-user verification URI on the authorization The URI should be
-    /// short and easy to remember as end users will be asked to manually type
-    /// it into their user agent.
-    pub fn verification_uri(&self) -> &EndUserVerificationUrl {
-        &self.verification_uri
-    }
-
-    /// A verification URI that includes the "user_code" (or other information
-    /// with the same function as the "user_code"), which is designed for
-    /// non-textual transmission.
-    pub fn verification_uri_complete(&self) -> Option<&VerificationUriComplete> {
-        self.verification_uri_complete.as_ref()
-    }
-
     /// The lifetime in seconds of the "device_code" and "user_code".
     pub fn expires_in(&self) -> Duration {
         Duration::from_secs(self.expires_in)
@@ -113,11 +89,6 @@ where
     /// provided, clients MUST use 5 as the default.
     pub fn interval(&self) -> Duration {
         Duration::from_secs(self.interval)
-    }
-
-    /// Any extra fields returned on the response.
-    pub fn extra_fields(&self) -> &EF {
-        &self.extra_fields
     }
 }
 

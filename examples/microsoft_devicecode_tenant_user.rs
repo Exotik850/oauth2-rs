@@ -1,7 +1,8 @@
 use oauth2::basic::BasicClient;
 use oauth2::devicecode::StandardDeviceAuthorizationResponse;
 use oauth2::reqwest::async_http_client;
-use oauth2::{AuthUrl, ClientId, DeviceAuthorizationUrl, Scope, TokenUrl};
+use oauth2::types::{AuthUrl, DeviceAuthorizationUrl, TokenUrl};
+use oauth2::{ClientId, Scope};
 use std::error::Error;
 
 // Reference: https://learn.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-device-code
@@ -36,8 +37,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     eprintln!(
         "Open this URL in your browser:\n{}\nand enter the code: {}",
-        details.verification_uri().to_string(),
-        details.user_code().secret().to_string()
+        details.verification_uri.to_string(),
+        details.user_code.secret().to_string()
     );
 
     let token_result = client

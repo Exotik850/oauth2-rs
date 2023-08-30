@@ -10,6 +10,7 @@ use crate::revocation::StandardRevocableToken;
 use super::basic::*;
 use super::devicecode::*;
 use super::*;
+use crate::types::*;
 use chrono::TimeZone;
 
 fn new_client() -> BasicClient {
@@ -394,7 +395,7 @@ fn test_exchange_code_successful_with_complete_json_response() {
         token.scopes()
     );
     assert_eq!(3600, token.expires_in().unwrap().as_secs());
-    assert_eq!("foobar", token.refresh_token().clone().unwrap().secret());
+    assert_eq!("foobar", token.refresh_token().unwrap().secret());
 
     // Ensure that serialization produces an equivalent JSON value.
     let serialized_json = serde_json::to_string(&token).unwrap();
@@ -961,16 +962,13 @@ fn test_exchange_code_with_simple_json_error() {
 
     let token_err = token.err().unwrap();
     match &token_err {
-        &RequestTokenError::ServerResponse(ref error_response) => {
-            assert_eq!(
-                BasicErrorResponseType::InvalidRequest,
-                *error_response.error()
-            );
+        RequestTokenError::ServerResponse(error_response) => {
+            assert_eq!(BasicErrorResponseType::InvalidRequest, error_response.error);
             assert_eq!(
                 Some(&"stuff happened".to_string()),
-                error_response.error_description()
+                error_response.error_description.as_ref()
             );
-            assert_eq!(None, error_response.error_uri());
+            assert_eq!(None, error_response.error_uri);
 
             // Test Debug trait for ErrorResponse
             assert_eq!(
@@ -985,9 +983,9 @@ fn test_exchange_code_with_simple_json_error() {
             );
 
             // Test Debug trait for BasicErrorResponseType
-            assert_eq!("invalid_request", format!("{:?}", error_response.error()));
+            assert_eq!("invalid_request", format!("{:?}", error_response.error));
             // Test Display trait for BasicErrorResponseType
-            assert_eq!("invalid_request", format!("{}", error_response.error()));
+            assert_eq!("invalid_request", format!("{}", error_response.error));
 
             // Ensure that serialization produces an equivalent JSON value.
             let serialized_json = serde_json::to_string(&error_response).unwrap();
@@ -1167,15 +1165,12 @@ fn test_exchange_code_with_400_status_code() {
 
     match token.err().unwrap() {
         RequestTokenError::ServerResponse(error_response) => {
-            assert_eq!(
-                BasicErrorResponseType::InvalidRequest,
-                *error_response.error()
-            );
+            assert_eq!(BasicErrorResponseType::InvalidRequest, error_response.error);
             assert_eq!(
                 Some(&"Expired code.".to_string()),
-                error_response.error_description()
+                error_response.error_description.as_ref()
             );
-            assert_eq!(None, error_response.error_uri());
+            assert_eq!(None, error_response.error_uri);
         }
         other => panic!("Unexpected error: {:?}", other),
     }
@@ -1285,7 +1280,7 @@ mod colorful_extension {
     impl RevocableToken for ColorfulRevocableToken {
         fn secret(&self) -> &str {
             match self {
-                ColorfulRevocableToken::Red(secret) => &secret,
+                ColorfulRevocableToken::Red(secret) => secret,
             }
         }
 
@@ -1402,7 +1397,7 @@ fn test_extension_successful_with_complete_json_response() {
         token.scopes()
     );
     assert_eq!(3600, token.expires_in().unwrap().as_secs());
-    assert_eq!("foobar", token.refresh_token().clone().unwrap().secret());
+    assert_eq!("foobar", token.refresh_token().unwrap().secret());
     assert_eq!(Some(&"round".to_string()), token.extra_fields().shape());
     assert_eq!(12, token.extra_fields().height());
 
@@ -1458,15 +1453,15 @@ fn test_extension_with_simple_json_error() {
 
     let token_err = token.err().unwrap();
     match &token_err {
-        &RequestTokenError::ServerResponse(ref error_response) => {
-            assert_eq!(ColorfulErrorResponseType::TooLight, *error_response.error());
+        RequestTokenError::ServerResponse(error_response) => {
+            assert_eq!(ColorfulErrorResponseType::TooLight, error_response.error);
             assert_eq!(
                 Some(&"stuff happened".to_string()),
-                error_response.error_description()
+                error_response.error_description.as_ref()
             );
             assert_eq!(
                 Some(&"https://errors".to_string()),
-                error_response.error_uri()
+                error_response.error_uri.as_ref()
             );
 
             // Ensure that serialization produces an equivalent JSON value.
@@ -1694,7 +1689,7 @@ fn test_token_introspection_successful_with_basic_auth_minimal_response() {
         ))
         .unwrap();
 
-    assert_eq!(true, introspection_response.active);
+    assert!(introspection_response.active);
     assert_eq!(None, introspection_response.scopes);
     assert_eq!(None, introspection_response.client_id);
     assert_eq!(None, introspection_response.username);
@@ -1757,7 +1752,7 @@ fn test_token_introspection_successful_with_basic_auth_full_response() {
         ))
         .unwrap();
 
-    assert_eq!(true, introspection_response.active);
+    assert!(introspection_response.active);
     assert_eq!(
         Some(vec![
             Scope::new("email".to_string()),
@@ -2081,7 +2076,7 @@ impl IncreasingTime {
     }
     fn next(&mut self) -> DateTime<Utc> {
         let next_value = self.times.next().unwrap();
-        let naive = chrono::NaiveDateTime::from_timestamp(next_value, 0);
+        let naive = chrono::NaiveDateTime::from_timestamp_opt(next_value, 0).unwrap_or_default();
         DateTime::<Utc>::from_utc(naive, chrono::Utc)
     }
 }
@@ -2098,16 +2093,12 @@ fn mock_sleep_fn(_: Duration) {}
 #[test]
 fn test_exchange_device_code_and_token() {
     let details = new_device_auth_details(3600);
-    assert_eq!("12345", details.device_code().secret());
-    assert_eq!("https://verify/here", details.verification_uri().as_str());
-    assert_eq!("abcde", details.user_code().secret().as_str());
+    assert_eq!("12345", details.device_code.secret());
+    assert_eq!("https://verify/here", details.verification_uri.as_str());
+    assert_eq!("abcde", details.user_code.secret().as_str());
     assert_eq!(
         "https://verify/here?abcde",
-        details
-            .verification_uri_complete()
-            .unwrap()
-            .secret()
-            .as_str()
+        details.verification_uri_complete.as_ref().unwrap().secret()
     );
     assert_eq!(Duration::from_secs(3600), details.expires_in());
     assert_eq!(Duration::from_secs(1), details.interval());
@@ -2157,16 +2148,12 @@ fn test_exchange_device_code_and_token() {
 #[test]
 fn test_device_token_authorization_timeout() {
     let details = new_device_auth_details(2);
-    assert_eq!("12345", details.device_code().secret());
-    assert_eq!("https://verify/here", details.verification_uri().as_str());
-    assert_eq!("abcde", details.user_code().secret().as_str());
+    assert_eq!("12345", details.device_code.secret());
+    assert_eq!("https://verify/here", details.verification_uri.as_str());
+    assert_eq!("abcde", details.user_code.secret().as_str());
     assert_eq!(
         "https://verify/here?abcde",
-        details
-            .verification_uri_complete()
-            .unwrap()
-            .secret()
-            .as_str()
+        details.verification_uri_complete.as_ref().unwrap().secret()
     );
     assert_eq!(Duration::from_secs(2), details.expires_in());
     assert_eq!(Duration::from_secs(1), details.interval());
@@ -2218,16 +2205,12 @@ fn test_device_token_authorization_timeout() {
 #[test]
 fn test_device_token_access_denied() {
     let details = new_device_auth_details(2);
-    assert_eq!("12345", details.device_code().secret());
-    assert_eq!("https://verify/here", details.verification_uri().as_str());
-    assert_eq!("abcde", details.user_code().secret().as_str());
+    assert_eq!("12345", details.device_code.secret());
+    assert_eq!("https://verify/here", details.verification_uri.as_str());
+    assert_eq!("abcde", details.user_code.secret().as_str());
     assert_eq!(
         "https://verify/here?abcde",
-        details
-            .verification_uri_complete()
-            .unwrap()
-            .secret()
-            .as_str()
+        details.verification_uri_complete.as_ref().unwrap().secret()
     );
     assert_eq!(Duration::from_secs(2), details.expires_in());
     assert_eq!(Duration::from_secs(1), details.interval());
@@ -2265,7 +2248,7 @@ fn test_device_token_access_denied() {
         .unwrap();
     match token {
         RequestTokenError::ServerResponse(msg) => {
-            assert_eq!(msg.error(), &DeviceCodeErrorResponseType::AccessDenied)
+            assert_eq!(msg.error, DeviceCodeErrorResponseType::AccessDenied)
         }
         _ => unreachable!("Error should be Access Denied"),
     }
@@ -2274,16 +2257,12 @@ fn test_device_token_access_denied() {
 #[test]
 fn test_device_token_expired() {
     let details = new_device_auth_details(2);
-    assert_eq!("12345", details.device_code().secret());
-    assert_eq!("https://verify/here", details.verification_uri().as_str());
-    assert_eq!("abcde", details.user_code().secret().as_str());
+    assert_eq!("12345", details.device_code.secret());
+    assert_eq!("https://verify/here", details.verification_uri.as_str());
+    assert_eq!("abcde", details.user_code.secret().as_str());
     assert_eq!(
         "https://verify/here?abcde",
-        details
-            .verification_uri_complete()
-            .unwrap()
-            .secret()
-            .as_str()
+        details.verification_uri_complete.as_ref().unwrap().secret()
     );
     assert_eq!(Duration::from_secs(2), details.expires_in());
     assert_eq!(Duration::from_secs(1), details.interval());
@@ -2321,7 +2300,7 @@ fn test_device_token_expired() {
         .unwrap();
     match token {
         RequestTokenError::ServerResponse(msg) => {
-            assert_eq!(msg.error(), &DeviceCodeErrorResponseType::ExpiredToken)
+            assert_eq!(msg.error, DeviceCodeErrorResponseType::ExpiredToken)
         }
         _ => unreachable!("Error should be ExpiredToken"),
     }
@@ -2371,16 +2350,12 @@ fn mock_http_client_success_fail(
 #[test]
 fn test_device_token_pending_then_success() {
     let details = new_device_auth_details(20);
-    assert_eq!("12345", details.device_code().secret());
-    assert_eq!("https://verify/here", details.verification_uri().as_str());
-    assert_eq!("abcde", details.user_code().secret().as_str());
+    assert_eq!("12345", details.device_code.secret());
+    assert_eq!("https://verify/here", details.verification_uri.as_str());
+    assert_eq!("abcde", details.user_code.secret().as_str());
     assert_eq!(
         "https://verify/here?abcde",
-        details
-            .verification_uri_complete()
-            .unwrap()
-            .secret()
-            .as_str()
+        details.verification_uri_complete.as_ref().unwrap().secret()
     );
     assert_eq!(Duration::from_secs(20), details.expires_in());
     assert_eq!(Duration::from_secs(1), details.interval());
@@ -2446,16 +2421,12 @@ fn test_device_token_pending_then_success() {
 #[test]
 fn test_device_token_slowdown_then_success() {
     let details = new_device_auth_details(3600);
-    assert_eq!("12345", details.device_code().secret());
-    assert_eq!("https://verify/here", details.verification_uri().as_str());
-    assert_eq!("abcde", details.user_code().secret().as_str());
+    assert_eq!("12345", details.device_code.secret());
+    assert_eq!("https://verify/here", details.verification_uri.as_str());
+    assert_eq!("abcde", details.user_code.secret().as_str());
     assert_eq!(
         "https://verify/here?abcde",
-        details
-            .verification_uri_complete()
-            .unwrap()
-            .secret()
-            .as_str()
+        details.verification_uri_complete.as_ref().unwrap().secret()
     );
     assert_eq!(Duration::from_secs(3600), details.expires_in());
     assert_eq!(Duration::from_secs(1), details.interval());
@@ -2520,6 +2491,8 @@ fn test_device_token_slowdown_then_success() {
 
 #[test]
 fn test_send_sync_impl() {
+    use request::*;
+
     fn is_sync_and_send<T: Sync + Send>() {}
     #[derive(Debug)]
     struct TestError;

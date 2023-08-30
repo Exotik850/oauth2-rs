@@ -23,10 +23,8 @@
 use oauth2::basic::BasicClient;
 // Alternatively, this can be `oauth2::curl::http_client` or a custom client.
 use oauth2::reqwest::http_client;
-use oauth2::{
-    AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
-    RedirectUrl, Scope, TokenUrl,
-};
+use oauth2::types::{AuthUrl, AuthorizationCode, ClientSecret, CsrfToken, RedirectUrl, TokenUrl};
+use oauth2::{AuthType, ClientId, PkceCodeChallenge, Scope};
 use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -78,10 +76,7 @@ fn main() {
         .set_pkce_challenge(pkce_code_challenge)
         .url();
 
-    println!(
-        "Open this URL in your browser:\n{}\n",
-        authorize_url.to_string()
-    );
+    println!("Open this URL in your browser:\n{}\n", authorize_url);
 
     // A very naive implementation of the redirect server.
     let listener = TcpListener::bind("127.0.0.1:3003").unwrap();
@@ -101,7 +96,7 @@ fn main() {
                 let code_pair = url
                     .query_pairs()
                     .find(|pair| {
-                        let &(ref key, _) = pair;
+                        let (key, _) = pair;
                         key == "code"
                     })
                     .unwrap();
@@ -112,7 +107,7 @@ fn main() {
                 let state_pair = url
                     .query_pairs()
                     .find(|pair| {
-                        let &(ref key, _) = pair;
+                        let (key, _) = pair;
                         key == "state"
                     })
                     .unwrap();

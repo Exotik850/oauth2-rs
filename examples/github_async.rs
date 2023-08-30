@@ -17,10 +17,15 @@ use oauth2::basic::BasicClient;
 
 // Alternatively, this can be `oauth2::curl::http_client` or a custom client.
 use oauth2::reqwest::async_http_client;
-use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
-    TokenResponse, TokenUrl,
-};
+use oauth2::types::AuthUrl;
+use oauth2::types::AuthorizationCode;
+use oauth2::types::ClientSecret;
+use oauth2::types::CsrfToken;
+use oauth2::types::RedirectUrl;
+use oauth2::types::TokenUrl;
+use oauth2::ClientId;
+use oauth2::Scope;
+use oauth2::TokenResponse;
 use std::env;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
@@ -84,7 +89,7 @@ async fn main() {
                 let code_pair = url
                     .query_pairs()
                     .find(|pair| {
-                        let &(ref key, _) = pair;
+                        let (key, _) = pair;
                         key == "code"
                     })
                     .unwrap();
@@ -95,7 +100,7 @@ async fn main() {
                 let state_pair = url
                     .query_pairs()
                     .find(|pair| {
-                        let &(ref key, _) = pair;
+                        let (key, _) = pair;
                         key == "state"
                     })
                     .unwrap();
@@ -135,8 +140,7 @@ async fn main() {
                 let scopes = if let Some(scopes_vec) = token.scopes() {
                     scopes_vec
                         .iter()
-                        .map(|comma_separated| comma_separated.split(','))
-                        .flatten()
+                        .flat_map(|comma_separated| comma_separated.split(','))
                         .collect::<Vec<_>>()
                 } else {
                     Vec::new()

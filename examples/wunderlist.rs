@@ -14,6 +14,7 @@
 //! ...and follow the instructions.
 //!
 
+use oauth2::types::{AuthUrl, AuthorizationCode, ClientSecret, CsrfToken, RedirectUrl, TokenUrl};
 use oauth2::TokenType;
 use oauth2::{
     basic::{
@@ -26,9 +27,8 @@ use oauth2::{
 use oauth2::helpers;
 use oauth2::reqwest::http_client;
 use oauth2::{
-    AccessToken, AuthUrl, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken,
-    EmptyExtraTokenFields, ExtraTokenFields, RedirectUrl, RefreshToken, Scope, TokenResponse,
-    TokenUrl,
+    AccessToken, Client, ClientId, EmptyExtraTokenFields, ExtraTokenFields, RefreshToken, Scope,
+    TokenResponse,
 };
 
 use serde::{Deserialize, Serialize};
@@ -167,10 +167,7 @@ fn main() {
     // Generate the authorization URL to which we'll redirect the user.
     let (authorize_url, csrf_state) = client.authorize_url(CsrfToken::new_random).url();
 
-    println!(
-        "Open this URL in your browser:\n{}\n",
-        authorize_url.to_string()
-    );
+    println!("Open this URL in your browser:\n{}\n", authorize_url);
 
     // A very naive implementation of the redirect server.
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
@@ -190,7 +187,7 @@ fn main() {
                 let code_pair = url
                     .query_pairs()
                     .find(|pair| {
-                        let &(ref key, _) = pair;
+                        let (key, _) = pair;
                         key == "code"
                     })
                     .unwrap();
@@ -201,7 +198,7 @@ fn main() {
                 let state_pair = url
                     .query_pairs()
                     .find(|pair| {
-                        let &(ref key, _) = pair;
+                        let (key, _) = pair;
                         key == "state"
                     })
                     .unwrap();

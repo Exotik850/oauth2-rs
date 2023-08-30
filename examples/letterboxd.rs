@@ -15,10 +15,10 @@
 
 use hex::ToHex;
 use hmac::{Hmac, Mac};
-use oauth2::{
-    basic::BasicClient, AuthType, AuthUrl, ClientId, ClientSecret, HttpRequest, HttpResponse,
-    ResourceOwnerPassword, ResourceOwnerUsername, TokenUrl,
+use oauth2::types::{
+    AuthUrl, ClientSecret, ResourceOwnerPassword, ResourceOwnerUsername, TokenUrl,
 };
+use oauth2::{basic::BasicClient, AuthType, ClientId, HttpRequest, HttpResponse};
 use sha2::Sha256;
 use url::Url;
 
@@ -117,7 +117,7 @@ impl SigningHttpClient {
             .append_pair("timestamp", &format!("{}", timestamp));
 
         // create signature
-        let mut hmac = Hmac::<Sha256>::new_from_slice(&self.client_secret.secret().as_bytes())
+        let mut hmac = Hmac::<Sha256>::new_from_slice(self.client_secret.secret().as_bytes())
             .expect("HMAC can take key of any size");
         hmac.update(method.as_str().as_bytes());
         hmac.update(&[b'\0']);

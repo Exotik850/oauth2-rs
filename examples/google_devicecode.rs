@@ -17,7 +17,8 @@ use oauth2::basic::BasicClient;
 // Alternatively, this can be oauth2::curl::http_client or a custom.
 use oauth2::devicecode::{DeviceAuthorizationResponse, ExtraDeviceAuthorizationFields};
 use oauth2::reqwest::http_client;
-use oauth2::{AuthType, AuthUrl, ClientId, ClientSecret, DeviceAuthorizationUrl, Scope, TokenUrl};
+use oauth2::types::{AuthUrl, ClientSecret, DeviceAuthorizationUrl, TokenUrl};
+use oauth2::{AuthType, ClientId, Scope};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
@@ -68,8 +69,8 @@ fn main() {
     // Display the URL and user-code.
     println!(
         "Open this URL in your browser:\n{}\nand enter the code: {}",
-        details.verification_uri().to_string(),
-        details.user_code().secret().to_string()
+        *details.verification_uri,
+        details.user_code.secret().to_string()
     );
 
     // Now poll for the token

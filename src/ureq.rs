@@ -37,18 +37,20 @@ pub fn http_client(request: HttpRequest) -> Result<HttpResponse, Error> {
     };
 
     for (name, value) in request.headers {
-        if let Some(name) = name {
-            req = req.set(
-                &name.to_string(),
-                value.to_str().map_err(|_| {
-                    Error::Other(format!(
-                        "invalid {} header value {:?}",
-                        name,
-                        value.as_bytes()
-                    ))
-                })?,
-            );
-        }
+        let Some(name) = name else {
+            continue;
+        };
+
+        req = req.set(
+            &name.to_string(),
+            value.to_str().map_err(|_| {
+                Error::Other(format!(
+                    "invalid {} header value {:?}",
+                    name,
+                    value.as_bytes()
+                ))
+            })?,
+        );
     }
 
     let response = if let Method::POST = request.method {

@@ -17,10 +17,8 @@ use oauth2::basic::BasicClient;
 
 // Alternatively, this can be `oauth2::curl::http_client` or a custom client.
 use oauth2::reqwest::http_client;
-use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
-    TokenResponse, TokenUrl,
-};
+use oauth2::types::{AuthUrl, AuthorizationCode, ClientSecret, CsrfToken, RedirectUrl, TokenUrl};
+use oauth2::{ClientId, Scope, TokenResponse};
 use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -60,10 +58,7 @@ fn main() {
         .add_scope(Scope::new("user:email".to_string()))
         .url();
 
-    println!(
-        "Open this URL in your browser:\n{}\n",
-        authorize_url.to_string()
-    );
+    println!("Open this URL in your browser:\n{}\n", authorize_url);
 
     // A very naive implementation of the redirect server.
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
@@ -83,7 +78,7 @@ fn main() {
                 let code_pair = url
                     .query_pairs()
                     .find(|pair| {
-                        let &(ref key, _) = pair;
+                        let (key, _) = pair;
                         key == "code"
                     })
                     .unwrap();
@@ -94,7 +89,7 @@ fn main() {
                 let state_pair = url
                     .query_pairs()
                     .find(|pair| {
-                        let &(ref key, _) = pair;
+                        let (key, _) = pair;
                         key == "state"
                     })
                     .unwrap();
@@ -131,8 +126,7 @@ fn main() {
                 let scopes = if let Some(scopes_vec) = token.scopes() {
                     scopes_vec
                         .iter()
-                        .map(|comma_separated| comma_separated.split(','))
-                        .flatten()
+                        .flat_map(|comma_separated| comma_separated.split(','))
                         .collect::<Vec<_>>()
                 } else {
                     Vec::new()
