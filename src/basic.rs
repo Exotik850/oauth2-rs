@@ -2,13 +2,11 @@ use std::fmt::Error as FormatterError;
 use std::fmt::{Debug, Display, Formatter};
 
 use super::{
-    Client, EmptyExtraTokenFields, ErrorResponseType, RequestTokenError, StandardErrorResponse,
-    StandardTokenResponse, TokenType,
+    Client, EmptyExtraTokenFields, RequestTokenError, StandardTokenResponse, TokenType,
 };
-use crate::{
-    revocation::{RevocationErrorResponseType, StandardRevocableToken},
-    StandardTokenIntrospectionResponse,
-};
+use crate::error::{ErrorResponseType, StandardErrorResponse};
+use crate::protocols::StandardTokenIntrospectionResponse;
+use crate::revocation::{RevocationErrorResponseType, StandardRevocableToken};
 
 ///
 /// Basic OAuth2 client specialization, suitable for most applications.
@@ -201,5 +199,6 @@ pub type BasicRequestTokenError<RE> = RequestTokenError<RE, BasicErrorResponse>;
 
 ///
 /// Revocation error response specialization for basic OAuth2 implementation.
-///
+///StandardTokenResponse
 pub type BasicRevocationErrorResponse = StandardErrorResponse<RevocationErrorResponseType>;
+

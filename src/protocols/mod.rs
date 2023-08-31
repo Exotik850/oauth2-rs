@@ -14,11 +14,15 @@ use crate::{
 };
 
 pub use {
-    authorization::AuthorizationRequest, client_credentials::ClientCredentialsTokenRequest,
-    code_token::CodeTokenRequest, device_access_token::DeviceAccessTokenRequest,
-    device_authorization::DeviceAuthorizationRequest, introspection::IntrospectionRequest,
-    password_token::PasswordTokenRequest, refresh_token::RefreshTokenRequest,
-    revocation::RevocationRequest,
+    authorization::*,
+client_credentials::*,
+code_token::*,
+device_access_token::*,
+device_authorization::*,
+introspection::*,
+password_token::*,
+refresh_token::*,
+revocation::*,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -159,6 +163,45 @@ where
             };
             return Err(error);
         }
+    }
+
+    Ok(())
+}
+
+fn check_response_body<RE, TE>(
+    http_response: &HttpResponse,
+) -> Result<(), RequestTokenError<RE, TE>>
+where
+    RE: Error + 'static,
+    TE: ErrorResponse,
+{
+    // Validate that the response Content-Type is JSON.
+    http_response
+        .headers
+        .get(CONTENT_TYPE)
+        .map_or(Ok(()), |content_type|
+            // Section 3.1.1.1 of RFC 7231 indicates that media types are case insensitive and
+            // may be followed by optional whitespace and/or a parameter (e.g., charset).
+            // See https://tools.ietf.org/html/rfc7231#section-3.1.1.1.
+            if content_type.to_str().ok().filter(|ct| ct.to_lowercase().starts_with(CONTENT_TYPE_JSON)).is_none() {
+                Err(
+                    RequestTokenError::Other(
+                        format!(
+                            "Unexpected response Content-Type: {:?}, should be `{}`",
+                            content_type,
+                            CONTENT_TYPE_JSON
+                        )
+                    )
+                )
+            } else {
+                Ok(())
+            }
+        )?;
+
+    if http_response.body.is_empty() {
+        return Err(RequestTokenError::Other(
+            "Server returned empty response body".to_string(),
+        ));
     }
 
     Ok(())

@@ -1,4 +1,4 @@
-use crate::request::*;
+use crate::protocols::*;
 use crate::types::*;
 use crate::*;
 
@@ -424,4 +424,22 @@ where
             _phantom: PhantomData,
         })
     }
+}
+
+///
+/// There was a problem configuring the request.
+///
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigurationError {
+    ///
+    /// The endpoint URL tp be contacted is missing.
+    ///
+    #[error("No {0} endpoint URL specified")]
+    MissingUrl(&'static str),
+    ///
+    /// The endpoint URL to be contacted MUST be HTTPS.
+    ///
+    #[error("Scheme for {0} endpoint URL must be HTTPS")]
+    InsecureUrl(&'static str),
 }

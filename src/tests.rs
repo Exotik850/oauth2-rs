@@ -11,6 +11,7 @@ use super::basic::*;
 use super::devicecode::*;
 use super::*;
 use crate::types::*;
+use crate::error::*;
 use chrono::TimeZone;
 
 fn new_client() -> BasicClient {
@@ -305,7 +306,7 @@ where
         b.refresh_token().map(RefreshToken::secret)
     );
     assert_eq!(a.scopes(), b.scopes());
-    assert_eq!(a.extra_fields(), b.extra_fields());
+    assert_eq!(a.extra_fields, b.extra_fields);
 }
 
 #[test]
@@ -1199,9 +1200,12 @@ fn test_exchange_code_fails_gracefully_on_transport_error() {
 mod colorful_extension {
     extern crate serde_json;
 
+    
     use super::super::*;
     use std::fmt::Error as FormatterError;
     use std::fmt::{Debug, Display, Formatter};
+    use crate::error::{StandardErrorResponse, ErrorResponseType};
+    use crate::protocols::StandardTokenIntrospectionResponse;
 
     pub type ColorfulClient = Client<
         StandardErrorResponse<ColorfulErrorResponseType>,
@@ -1330,8 +1334,8 @@ fn test_extension_successful_with_minimal_json_response() {
     assert_eq!(ColorfulTokenType::Green, *token.token_type());
     assert_eq!(None, token.expires_in());
     assert!(token.refresh_token().is_none());
-    assert_eq!(None, token.extra_fields().shape());
-    assert_eq!(10, token.extra_fields().height());
+    assert_eq!(None, token.extra_fields.shape());
+    assert_eq!(10, token.extra_fields.height());
 
     // Ensure that serialization produces an equivalent JSON value.
     let serialized_json = serde_json::to_string(&token).unwrap();
@@ -1398,8 +1402,8 @@ fn test_extension_successful_with_complete_json_response() {
     );
     assert_eq!(3600, token.expires_in().unwrap().as_secs());
     assert_eq!("foobar", token.refresh_token().unwrap().secret());
-    assert_eq!(Some(&"round".to_string()), token.extra_fields().shape());
-    assert_eq!(12, token.extra_fields().height());
+    assert_eq!(Some(&"round".to_string()), token.extra_fields.shape());
+    assert_eq!(12, token.extra_fields.height());
 
     // Ensure that serialization produces an equivalent JSON value.
     let serialized_json = serde_json::to_string(&token).unwrap();
@@ -1498,6 +1502,8 @@ mod custom_errors {
 
     extern crate serde_json;
 
+    use crate::protocols::StandardTokenIntrospectionResponse;
+
     use super::super::*;
     use super::colorful_extension::*;
 
@@ -1579,8 +1585,8 @@ fn test_extension_serializer() {
             height: 10,
         },
     );
-    token_response.set_expires_in(Some(&Duration::from_secs(3600)));
-    token_response.set_refresh_token(Some(RefreshToken::new("myothersecret".to_string())));
+    token_response.expires_in = Some(3600);
+    token_response.refresh_token = Some(RefreshToken::new("myothersecret".to_string()));
     let serialized = serde_json::to_string(&token_response).unwrap();
     assert_eq!(
         "{\
@@ -2491,7 +2497,7 @@ fn test_device_token_slowdown_then_success() {
 
 #[test]
 fn test_send_sync_impl() {
-    use request::*;
+    use protocols::*;
 
     fn is_sync_and_send<T: Sync + Send>() {}
     #[derive(Debug)]

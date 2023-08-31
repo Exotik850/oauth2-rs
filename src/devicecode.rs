@@ -8,10 +8,11 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    ErrorResponse, ErrorResponseType, RequestTokenError, StandardErrorResponse, TokenResponse,
+    ErrorResponse, RequestTokenError, TokenResponse,
     TokenType,
 };
 use crate::basic::BasicErrorResponseType;
+use crate::error::{ErrorResponseType, StandardErrorResponse};
 use crate::types::{DeviceCode, EndUserVerificationUrl, UserCode, VerificationUriComplete};
 
 /// The minimum amount of time in seconds that the client SHOULD wait

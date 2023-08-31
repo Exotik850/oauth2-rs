@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Error as FormatterError;
 use std::fmt::{Debug, Display, Formatter};
 
-use crate::{basic::BasicErrorResponseType, ErrorResponseType};
+use crate::basic::BasicErrorResponseType;
+use crate::error::ErrorResponseType;
 use crate::{AccessToken, RefreshToken};
 
 ///

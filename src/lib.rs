@@ -419,8 +419,7 @@
 //!
 use std::borrow::Cow;
 use std::error::Error;
-use std::fmt::Error as FormatterError;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -429,6 +428,7 @@ use std::time::Duration;
 use base64::Engine;
 use chrono::serde::ts_seconds_option;
 use chrono::{DateTime, Utc};
+use error::{RequestTokenError, ErrorResponse};
 use http::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use http::status::StatusCode;
 use serde::de::DeserializeOwned;
@@ -439,7 +439,7 @@ use crate::devicecode::DeviceAccessTokenPollResult;
 
 mod client;
 mod pkce_code;
-pub mod request;
+pub mod protocols;
 pub use client::Client;
 
 ///
@@ -486,6 +486,7 @@ pub mod reqwest;
 mod tests;
 
 pub mod types;
+pub mod error;
 
 ///
 /// HTTP client backed by the [ureq](https://crates.io/crates/ureq) crate.
@@ -506,31 +507,13 @@ pub use devicecode::{
     StandardDeviceAuthorizationResponse,
 };
 
-pub use pkce_code::{PkceCodeChallenge, PkceCodeChallengeMethod, PkceCodeVerifier};
+pub use pkce_code::*;
 pub use types::{AccessToken, ClientId, RefreshToken, Scope};
 
 pub use revocation::{RevocableToken, RevocationErrorResponseType, StandardRevocableToken};
 
 const CONTENT_TYPE_JSON: &str = "application/json";
 const CONTENT_TYPE_FORMENCODED: &str = "application/x-www-form-urlencoded";
-
-///
-/// There was a problem configuring the request.
-///
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum ConfigurationError {
-    ///
-    /// The endpoint URL tp be contacted is missing.
-    ///
-    #[error("No {0} endpoint URL specified")]
-    MissingUrl(&'static str),
-    ///
-    /// The endpoint URL to be contacted MUST be HTTPS.
-    ///
-    #[error("Scheme for {0} endpoint URL must be HTTPS")]
-    InsecureUrl(&'static str),
-}
 
 ///
 /// Indicates whether requests to the authorization server should use basic authentication or
@@ -578,44 +561,6 @@ pub struct HttpResponse {
     pub body: Vec<u8>,
 }
 
-fn check_response_body<RE, TE>(
-    http_response: &HttpResponse,
-) -> Result<(), RequestTokenError<RE, TE>>
-where
-    RE: Error + 'static,
-    TE: ErrorResponse,
-{
-    // Validate that the response Content-Type is JSON.
-    http_response
-        .headers
-        .get(CONTENT_TYPE)
-        .map_or(Ok(()), |content_type|
-            // Section 3.1.1.1 of RFC 7231 indicates that media types are case insensitive and
-            // may be followed by optional whitespace and/or a parameter (e.g., charset).
-            // See https://tools.ietf.org/html/rfc7231#section-3.1.1.1.
-            if content_type.to_str().ok().filter(|ct| ct.to_lowercase().starts_with(CONTENT_TYPE_JSON)).is_none() {
-                Err(
-                    RequestTokenError::Other(
-                        format!(
-                            "Unexpected response Content-Type: {:?}, should be `{}`",
-                            content_type,
-                            CONTENT_TYPE_JSON
-                        )
-                    )
-                )
-            } else {
-                Ok(())
-            }
-        )?;
-
-    if http_response.body.is_empty() {
-        return Err(RequestTokenError::Other(
-            "Server returned empty response body".to_string(),
-        ));
-    }
-
-    Ok(())
-}
 
 ///
 /// Trait for OAuth2 access tokens.
@@ -642,9 +587,7 @@ impl ExtraTokenFields for EmptyExtraTokenFields {}
 /// separately from the `StandardTokenResponse` struct to support customization by clients,
 /// such as supporting interoperability with non-standards-complaint OAuth2 providers.
 ///
-pub trait TokenResponse<TT>: Debug + DeserializeOwned + Serialize
-where
-    TT: TokenType,
+pub trait TokenResponse<TT: TokenType>: Debug + DeserializeOwned + Serialize
 {
     ///
     /// REQUIRED. The access token issued by the authorization server.
@@ -686,16 +629,16 @@ where
 /// [Section 5.1 of RFC 6749](https://tools.ietf.org/html/rfc6749#section-5.1), as well as
 /// extensions defined by the `EF` type parameter.
 ///
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct StandardTokenResponse<EF, TT>
-where
+where 
     EF: ExtraTokenFields,
     TT: TokenType,
 {
     pub access_token: AccessToken,
     #[serde(bound = "TT: TokenType")]
     #[serde(deserialize_with = "helpers::deserialize_untagged_enum_case_insensitive")]
-    token_type: TT,
+    pub token_type: TT,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_in: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -705,16 +648,16 @@ where
     #[serde(serialize_with = "helpers::serialize_space_delimited_vec")]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    scopes: Option<Vec<Scope>>,
-
+    pub scopes: Option<Vec<Scope>>,
+    
     #[serde(bound = "EF: ExtraTokenFields")]
     #[serde(flatten)]
-    extra_fields: EF,
+    pub extra_fields: EF,
 }
 impl<EF, TT> StandardTokenResponse<EF, TT>
 where
     EF: ExtraTokenFields,
-    TT: TokenType,
+    TT: TokenType
 {
     ///
     /// Instantiate a new OAuth2 token response.
@@ -729,60 +672,11 @@ where
             extra_fields,
         }
     }
-
-    ///
-    /// Set the `access_token` field.
-    ///
-    pub fn set_access_token(&mut self, access_token: AccessToken) {
-        self.access_token = access_token;
-    }
-
-    ///
-    /// Set the `token_type` field.
-    ///
-    pub fn set_token_type(&mut self, token_type: TT) {
-        self.token_type = token_type;
-    }
-
-    ///
-    /// Set the `expires_in` field.
-    ///
-    pub fn set_expires_in(&mut self, expires_in: Option<&Duration>) {
-        self.expires_in = expires_in.map(Duration::as_secs);
-    }
-
-    ///
-    /// Set the `refresh_token` field.
-    ///
-    pub fn set_refresh_token(&mut self, refresh_token: Option<RefreshToken>) {
-        self.refresh_token = refresh_token;
-    }
-
-    ///
-    /// Set the `scopes` field.
-    ///
-    pub fn set_scopes(&mut self, scopes: Option<Vec<Scope>>) {
-        self.scopes = scopes;
-    }
-
-    ///
-    /// Extra fields defined by the client application.
-    ///
-    pub fn extra_fields(&self) -> &EF {
-        &self.extra_fields
-    }
-
-    ///
-    /// Set the extra fields defined by the client application.
-    ///
-    pub fn set_extra_fields(&mut self, extra_fields: EF) {
-        self.extra_fields = extra_fields;
-    }
 }
 impl<EF, TT> TokenResponse<TT> for StandardTokenResponse<EF, TT>
 where
     EF: ExtraTokenFields,
-    TT: TokenType,
+    TT: TokenType
 {
     ///
     /// REQUIRED. The access token issued by the authorization server.
@@ -827,462 +721,4 @@ where
     }
 }
 
-///
-/// Common methods shared by all OAuth2 token introspection implementations.
-///
-/// The methods in this trait are defined in
-/// [Section 2.2 of RFC 7662](https://tools.ietf.org/html/rfc7662#section-2.2). This trait exists
-/// separately from the `StandardTokenIntrospectionResponse` struct to support customization by
-/// clients, such as supporting interoperability with non-standards-complaint OAuth2 providers.
-///
-pub trait TokenIntrospectionResponse<TT>: Debug + DeserializeOwned + Serialize
-where
-    TT: TokenType,
-{
-    ///
-    /// REQUIRED.  Boolean indicator of whether or not the presented token
-    /// is currently active.  The specifics of a token's "active" state
-    /// will vary depending on the implementation of the authorization
-    /// server and the information it keeps about its tokens, but a "true"
-    /// value return for the "active" property will generally indicate
-    /// that a given token has been issued by this authorization server,
-    /// has not been revoked by the resource owner, and is within its
-    /// given time window of validity (e.g., after its issuance time and
-    /// before its expiration time).
-    ///
-    fn active(&self) -> bool;
-    ///
-    ///
-    /// OPTIONAL.  A JSON string containing a space-separated list of
-    /// scopes associated with this token, in the format described in
-    /// [Section 3.3 of RFC 7662](https://tools.ietf.org/html/rfc7662#section-3.3).
-    /// If included in the response,
-    /// this space-delimited field is parsed into a `Vec` of individual scopes. If omitted from
-    /// the response, this field is `None`.
-    ///
-    fn scopes(&self) -> Option<&Vec<Scope>>;
-    ///
-    /// OPTIONAL.  Client identifier for the OAuth 2.0 client that
-    /// requested this token.
-    ///
-    fn client_id(&self) -> Option<&ClientId>;
-    ///
-    /// OPTIONAL.  Human-readable identifier for the resource owner who
-    /// authorized this token.
-    ///
-    fn username(&self) -> Option<&str>;
-    ///
-    /// OPTIONAL.  Type of the token as defined in
-    /// [Section 5.1 of RFC 7662](https://tools.ietf.org/html/rfc7662#section-5.1).
-    /// Value is case insensitive and deserialized to the generic `TokenType` parameter.
-    ///
-    fn token_type(&self) -> Option<&TT>;
-    ///
-    /// OPTIONAL.  Integer timestamp, measured in the number of seconds
-    /// since January 1 1970 UTC, indicating when this token will expire,
-    /// as defined in JWT [RFC7519](https://tools.ietf.org/html/rfc7519).
-    ///
-    fn exp(&self) -> Option<DateTime<Utc>>;
-    ///
-    /// OPTIONAL.  Integer timestamp, measured in the number of seconds
-    /// since January 1 1970 UTC, indicating when this token was
-    /// originally issued, as defined in JWT [RFC7519](https://tools.ietf.org/html/rfc7519).
-    ///
-    fn iat(&self) -> Option<DateTime<Utc>>;
-    ///
-    /// OPTIONAL.  Integer timestamp, measured in the number of seconds
-    /// since January 1 1970 UTC, indicating when this token is not to be
-    /// used before, as defined in JWT [RFC7519](https://tools.ietf.org/html/rfc7519).
-    ///
-    fn nbf(&self) -> Option<DateTime<Utc>>;
-    ///
-    /// OPTIONAL.  Subject of the token, as defined in JWT [RFC7519](https://tools.ietf.org/html/rfc7519).
-    /// Usually a machine-readable identifier of the resource owner who
-    /// authorized this token.
-    ///
-    fn sub(&self) -> Option<&str>;
-    ///
-    /// OPTIONAL.  Service-specific string identifier or list of string
-    /// identifiers representing the intended audience for this token, as
-    /// defined in JWT [RFC7519](https://tools.ietf.org/html/rfc7519).
-    ///
-    fn aud(&self) -> Option<&Vec<String>>;
-    ///
-    /// OPTIONAL.  String representing the issuer of this token, as
-    /// defined in JWT [RFC7519](https://tools.ietf.org/html/rfc7519).
-    ///
-    fn iss(&self) -> Option<&str>;
-    ///
-    /// OPTIONAL.  String identifier for the token, as defined in JWT
-    /// [RFC7519](https://tools.ietf.org/html/rfc7519).
-    ///
-    fn jti(&self) -> Option<&str>;
-}
 
-///
-/// Standard OAuth2 token introspection response.
-///
-/// This struct includes the fields defined in
-/// [Section 2.2 of RFC 7662](https://tools.ietf.org/html/rfc7662#section-2.2), as well as
-/// extensions defined by the `EF` type parameter.
-///
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct StandardTokenIntrospectionResponse<EF, TT>
-where
-    EF: ExtraTokenFields,
-    TT: TokenType + 'static,
-{
-    active: bool,
-    #[serde(rename = "scope")]
-    #[serde(deserialize_with = "helpers::deserialize_space_delimited_vec")]
-    #[serde(serialize_with = "helpers::serialize_space_delimited_vec")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    scopes: Option<Vec<Scope>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    client_id: Option<ClientId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    username: Option<String>,
-    #[serde(
-        bound = "TT: TokenType",
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "helpers::deserialize_untagged_enum_case_insensitive",
-        default = "none_field"
-    )]
-    token_type: Option<TT>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "ts_seconds_option")]
-    #[serde(default)]
-    exp: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "ts_seconds_option")]
-    #[serde(default)]
-    iat: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "ts_seconds_option")]
-    #[serde(default)]
-    nbf: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sub: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    #[serde(deserialize_with = "helpers::deserialize_optional_string_or_vec_string")]
-    aud: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    iss: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    jti: Option<String>,
-
-    #[serde(bound = "EF: ExtraTokenFields")]
-    #[serde(flatten)]
-    extra_fields: EF,
-}
-
-fn none_field<T>() -> Option<T> {
-    None
-}
-
-impl<EF, TT> StandardTokenIntrospectionResponse<EF, TT>
-where
-    EF: ExtraTokenFields,
-    TT: TokenType,
-{
-    ///
-    /// Instantiate a new OAuth2 token introspection response.
-    ///
-    pub fn new(active: bool, extra_fields: EF) -> Self {
-        Self {
-            active,
-
-            scopes: None,
-            client_id: None,
-            username: None,
-            token_type: None,
-            exp: None,
-            iat: None,
-            nbf: None,
-            sub: None,
-            aud: None,
-            iss: None,
-            jti: None,
-            extra_fields,
-        }
-    }
-
-    ///
-    /// Sets the `set_active` field.
-    ///
-    pub fn set_active(&mut self, active: bool) {
-        self.active = active;
-    }
-    ///
-    /// Sets the `set_scopes` field.
-    ///
-    pub fn set_scopes(&mut self, scopes: Option<Vec<Scope>>) {
-        self.scopes = scopes;
-    }
-    ///
-    /// Sets the `set_client_id` field.
-    ///
-    pub fn set_client_id(&mut self, client_id: Option<ClientId>) {
-        self.client_id = client_id;
-    }
-    ///
-    /// Sets the `set_username` field.
-    ///
-    pub fn set_username(&mut self, username: Option<String>) {
-        self.username = username;
-    }
-    ///
-    /// Sets the `set_token_type` field.
-    ///
-    pub fn set_token_type(&mut self, token_type: Option<TT>) {
-        self.token_type = token_type;
-    }
-    ///
-    /// Sets the `set_exp` field.
-    ///
-    pub fn set_exp(&mut self, exp: Option<DateTime<Utc>>) {
-        self.exp = exp;
-    }
-    ///
-    /// Sets the `set_iat` field.
-    ///
-    pub fn set_iat(&mut self, iat: Option<DateTime<Utc>>) {
-        self.iat = iat;
-    }
-    ///
-    /// Sets the `set_nbf` field.
-    ///
-    pub fn set_nbf(&mut self, nbf: Option<DateTime<Utc>>) {
-        self.nbf = nbf;
-    }
-    ///
-    /// Sets the `set_sub` field.
-    ///
-    pub fn set_sub(&mut self, sub: Option<String>) {
-        self.sub = sub;
-    }
-    ///
-    /// Sets the `set_aud` field.
-    ///
-    pub fn set_aud(&mut self, aud: Option<Vec<String>>) {
-        self.aud = aud;
-    }
-    ///
-    /// Sets the `set_iss` field.
-    ///
-    pub fn set_iss(&mut self, iss: Option<String>) {
-        self.iss = iss;
-    }
-    ///
-    /// Sets the `set_jti` field.
-    ///
-    pub fn set_jti(&mut self, jti: Option<String>) {
-        self.jti = jti;
-    }
-    ///
-    /// Extra fields defined by the client application.
-    ///
-    pub fn extra_fields(&self) -> &EF {
-        &self.extra_fields
-    }
-    ///
-    /// Sets the `set_extra_fields` field.
-    ///
-    pub fn set_extra_fields(&mut self, extra_fields: EF) {
-        self.extra_fields = extra_fields;
-    }
-}
-impl<EF, TT> TokenIntrospectionResponse<TT> for StandardTokenIntrospectionResponse<EF, TT>
-where
-    EF: ExtraTokenFields,
-    TT: TokenType,
-{
-    fn active(&self) -> bool {
-        self.active
-    }
-
-    fn scopes(&self) -> Option<&Vec<Scope>> {
-        self.scopes.as_ref()
-    }
-
-    fn client_id(&self) -> Option<&ClientId> {
-        self.client_id.as_ref()
-    }
-
-    fn username(&self) -> Option<&str> {
-        self.username.as_deref()
-    }
-
-    fn token_type(&self) -> Option<&TT> {
-        self.token_type.as_ref()
-    }
-
-    fn exp(&self) -> Option<DateTime<Utc>> {
-        self.exp
-    }
-
-    fn iat(&self) -> Option<DateTime<Utc>> {
-        self.iat
-    }
-
-    fn nbf(&self) -> Option<DateTime<Utc>> {
-        self.nbf
-    }
-
-    fn sub(&self) -> Option<&str> {
-        self.sub.as_deref()
-    }
-
-    fn aud(&self) -> Option<&Vec<String>> {
-        self.aud.as_ref()
-    }
-
-    fn iss(&self) -> Option<&str> {
-        self.iss.as_deref()
-    }
-
-    fn jti(&self) -> Option<&str> {
-        self.jti.as_deref()
-    }
-}
-
-///
-/// Server Error Response
-///
-/// This trait exists separately from the `StandardErrorResponse` struct
-/// to support customization by clients, such as supporting interoperability with
-/// non-standards-complaint OAuth2 providers
-///
-pub trait ErrorResponse: Debug + DeserializeOwned + Serialize {}
-
-///
-/// Error types enum.
-///
-/// NOTE: The serialization must return the `snake_case` representation of
-/// this error type. This value must match the error type from the relevant OAuth 2.0 standards
-/// (RFC 6749 or an extension).
-///
-pub trait ErrorResponseType: Debug + DeserializeOwned + Serialize {}
-
-///
-/// Error response returned by server after requesting an access token.
-///
-/// The fields in this structure are defined in
-/// [Section 5.2 of RFC 6749](https://tools.ietf.org/html/rfc6749#section-5.2). This
-/// trait is parameterized by a `ErrorResponseType` to support error types specific to future OAuth2
-/// authentication schemes and extensions.
-///
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct StandardErrorResponse<T> {
-    ///
-    /// REQUIRED. A single ASCII error code deserialized to the generic parameter
-    /// `ErrorResponseType`.
-    ///
-    #[serde(bound = "T: ErrorResponseType")]
-    error: T,
-    ///
-    /// OPTIONAL. Human-readable ASCII text providing additional information, used to assist
-    /// the client developer in understanding the error that occurred. Values for this
-    /// parameter MUST NOT include characters outside the set `%x20-21 / %x23-5B / %x5D-7E`.
-    ///
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error_description: Option<String>,
-    ///
-    /// OPTIONAL. URI identifying a human-readable web page with information about the error,
-    /// used to provide the client developer with additional information about the error.
-    /// Values for the "error_uri" parameter MUST conform to the URI-reference syntax and
-    /// thus MUST NOT include characters outside the set `%x21 / %x23-5B / %x5D-7E`.
-    ///
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error_uri: Option<String>,
-}
-
-impl<T: ErrorResponseType> StandardErrorResponse<T> {
-    ///
-    /// Instantiate a new `ErrorResponse`.
-    ///
-    /// # Arguments
-    ///
-    /// * `error` - REQUIRED. A single ASCII error code deserialized to the generic parameter.
-    ///   `ErrorResponseType`.
-    /// * `error_description` - OPTIONAL. Human-readable ASCII text providing additional
-    ///   information, used to assist the client developer in understanding the error that
-    ///   occurred. Values for this parameter MUST NOT include characters outside the set
-    ///   `%x20-21 / %x23-5B / %x5D-7E`.
-    /// * `error_uri` - OPTIONAL. A URI identifying a human-readable web page with information
-    ///   about the error used to provide the client developer with additional information about
-    ///   the error. Values for the "error_uri" parameter MUST conform to the URI-reference
-    ///   syntax and thus MUST NOT include characters outside the set `%x21 / %x23-5B / %x5D-7E`.
-    ///
-    pub fn new(error: T, error_description: Option<String>, error_uri: Option<String>) -> Self {
-        Self {
-            error,
-            error_description,
-            error_uri,
-        }
-    }
-}
-
-impl<T> ErrorResponse for StandardErrorResponse<T> where T: ErrorResponseType + 'static {}
-
-impl<TE> Display for StandardErrorResponse<TE>
-where
-    TE: ErrorResponseType + Display,
-{
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FormatterError> {
-        let mut formatted = self.error.to_string();
-
-        if let Some(error_description) = &self.error_description {
-            formatted.push_str(": ");
-            formatted.push_str(error_description);
-        }
-
-        if let Some(error_uri) = &self.error_uri {
-            formatted.push_str(" / See ");
-            formatted.push_str(error_uri);
-        }
-
-        write!(f, "{}", formatted)
-    }
-}
-
-///
-/// Error encountered while requesting access token.
-///
-#[derive(Debug, thiserror::Error)]
-pub enum RequestTokenError<RE, T>
-where
-    RE: Error + 'static,
-    T: ErrorResponse + 'static,
-{
-    ///
-    /// Error response returned by authorization server. Contains the parsed `ErrorResponse`
-    /// returned by the server.
-    ///
-    #[error("Server returned error response")]
-    ServerResponse(T),
-    ///
-    /// An error occurred while sending the request or receiving the response (e.g., network
-    /// connectivity failed).
-    ///
-    #[error("Request failed")]
-    Request(#[source] RE),
-    ///
-    /// Failed to parse server response. Parse errors may occur while parsing either successful
-    /// or error responses.
-    ///
-    #[error("Failed to parse server response")]
-    Parse(
-        #[source] serde_path_to_error::Error<serde_json::error::Error>,
-        Vec<u8>,
-    ),
-    ///
-    /// Some other type of error occurred (e.g., an unexpected server response).
-    ///
-    #[error("Other error: {}", _0)]
-    Other(String),
-}
