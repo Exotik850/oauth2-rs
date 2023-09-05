@@ -20,7 +20,7 @@ use crate::*;
 /// # use thiserror::Error;
 /// # use http::status::StatusCode;
 /// # use http::header::{HeaderValue, CONTENT_TYPE};
-/// # use oauth2::{*, basic::*};
+/// # use oauth2::{*, basic::*, types::*, error::*};
 /// # let client = BasicClient::new(
 /// #     ClientId::new("aaa".to_string()),
 /// #     Some(ClientSecret::new("bbb".to_string())),
@@ -57,7 +57,7 @@ use crate::*;
 ///     .request(http_client);
 ///
 /// assert!(matches!(res, Err(
-///     RequestTokenError::ServerResponse(err)) if matches!(err.error(),
+///     RequestTokenError::ServerResponse(err)) if matches!(err.error,
 ///         RevocationErrorResponseType::UnsupportedTokenType)));
 /// ```
 ///

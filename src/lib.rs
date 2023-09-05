@@ -83,16 +83,18 @@
 //! ```rust,no_run
 //! use anyhow;
 //! use oauth2::{
-//!     AuthorizationCode,
-//!     AuthUrl,
-//!     ClientId,
-//!     ClientSecret,
-//!     CsrfToken,
-//!     PkceCodeChallenge,
-//!     RedirectUrl,
 //!     Scope,
 //!     TokenResponse,
-//!     TokenUrl
+//!     PkceCodeChallenge
+//! };
+//! use oauth2::types::{
+//!     ClientSecret,
+//!     AuthorizationCode,
+//!     ClientId,
+//!     AuthUrl,
+//!     RedirectUrl,
+//!     TokenUrl,
+//!     CsrfToken
 //! };
 //! use oauth2::basic::BasicClient;
 //! use oauth2::reqwest::http_client;
@@ -152,15 +154,17 @@
 //! ```rust,no_run
 //! use anyhow;
 //! use oauth2::{
-//!     AuthorizationCode,
-//!     AuthUrl,
-//!     ClientId,
-//!     ClientSecret,
-//!     CsrfToken,
 //!     PkceCodeChallenge,
-//!     RedirectUrl,
 //!     Scope,
 //!     TokenResponse,
+//! };
+//! use oauth2::types::{
+//!     AuthorizationCode, 
+//!     AuthUrl, 
+//!     ClientSecret, 
+//!     ClientId, 
+//!     CsrfToken, 
+//!     RedirectUrl, 
 //!     TokenUrl
 //! };
 //! use oauth2::basic::BasicClient;
@@ -227,12 +231,14 @@
 //! ```rust,no_run
 //! use anyhow;
 //! use oauth2::{
+//!     Scope
+//! };
+//! use oauth2::types::{
 //!     AuthUrl,
 //!     ClientId,
 //!     ClientSecret,
 //!     CsrfToken,
 //!     RedirectUrl,
-//!     Scope
 //! };
 //! use oauth2::basic::BasicClient;
 //! use url::Url;
@@ -274,13 +280,15 @@
 //! ```rust,no_run
 //! use anyhow;
 //! use oauth2::{
+//!     Scope,
+//!     TokenResponse,
+//! };
+//! use oauth2::types::{
 //!     AuthUrl,
 //!     ClientId,
 //!     ClientSecret,
 //!     ResourceOwnerPassword,
 //!     ResourceOwnerUsername,
-//!     Scope,
-//!     TokenResponse,
 //!     TokenUrl
 //! };
 //! use oauth2::basic::BasicClient;
@@ -318,11 +326,13 @@
 //! ```rust,no_run
 //! use anyhow;
 //! use oauth2::{
+//!     Scope,
+//!     TokenResponse,
+//! };
+//! use oauth2::types::{
 //!     AuthUrl,
 //!     ClientId,
 //!     ClientSecret,
-//!     Scope,
-//!     TokenResponse,
 //!     TokenUrl
 //! };
 //! use oauth2::basic::BasicClient;
@@ -359,13 +369,15 @@
 //! ```rust,no_run
 //! use anyhow;
 //! use oauth2::{
+//!     Scope,
+//!     TokenResponse,
+//! };
+//! use oauth2::types::{
 //!     AuthUrl,
 //!     ClientId,
 //!     ClientSecret,
 //!     DeviceAuthorizationUrl,
-//!     Scope,
-//!     TokenResponse,
-//!     TokenUrl
+//!     TokenUrl,
 //! };
 //! use oauth2::basic::BasicClient;
 //! use oauth2::devicecode::StandardDeviceAuthorizationResponse;
@@ -390,8 +402,8 @@
 //!
 //! println!(
 //!     "Open this URL in your browser:\n{}\nand enter the code: {}",
-//!     details.verification_uri().to_string(),
-//!     details.user_code().secret().to_string()
+//!     details.verification_uri.to_string(),
+//!     details.user_code.secret().to_string()
 //! );
 //!
 //! let token_result =
